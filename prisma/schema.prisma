@@ -1,0 +1,247 @@
+// Prisma schema для сайта "Туры в Дагестан"
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// Пользователи системы
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  phone     String?
+  role      String   @default("TOURIST")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Связи
+  bookings Booking[]
+  reviews  Review[]
+
+  @@map("users")
+}
+
+// Туры
+model Tour {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  description String?
+  shortDescription String?
+
+  // Ценообразование
+  basePrice   Float    // Используем Float вместо Decimal для SQLite
+  currency    String   @default("RUB")
+
+  // Характеристики тура
+  duration    Int      // в днях
+  difficulty  String   @default("EASY")
+  tourType    String
+  maxPeople   Int      @default(10)
+  minPeople   Int      @default(1)
+
+  // Статус
+  isActive    Boolean  @default(true)
+  isPopular   Boolean  @default(false)
+
+  // Медиа
+  mainImage   String?
+
+  // Даты
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Связи
+  destinationId String?
+  destination   Destination? @relation(fields: [destinationId], references: [id])
+  services      TourService[]
+  bookings      Booking[]
+  reviews       Review[]
+  photos        Photo[]
+
+  @@map("tours")
+}
+
+// Направления/Локации
+model Destination {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+
+  // Координаты
+  latitude    Float?
+  longitude   Float?
+
+  // Характеристики
+  region      String?
+  isPopular   Boolean  @default(false)
+
+  // Медиа
+  mainImage   String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Связи
+  tours       Tour[]
+  photos      Photo[]
+
+  @@map("destinations")
+}
+
+// Услуги
+model Service {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  serviceType String
+
+  // Ценообразование
+  basePrice   Float    // Используем Float вместо Decimal для SQLite
+  unit        String   @default("шт")
+
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Связи
+  tourServices TourService[]
+  pricing      Pricing[]
+
+  @@map("services")
+}
+
+// Связующая таблица Тур-Услуга
+model TourService {
+  id        String @id @default(cuid())
+  tourId    String
+  serviceId String
+  quantity  Int    @default(1)
+
+  // Цена может быть кастомной для конкретного тура
+  customPrice Float?  // Используем Float вместо Decimal для SQLite
+
+  tour      Tour    @relation(fields: [tourId], references: [id], onDelete: Cascade)
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([tourId, serviceId])
+  @@map("tour_services")
+}
+
+// Ценообразование услуг
+model Pricing {
+  id        String   @id @default(cuid())
+  serviceId String
+  priceType String   @default("BASE")
+
+  // Цена и период действия
+  price     Float    // Используем Float вместо Decimal для SQLite
+  validFrom DateTime @default(now())
+  validTo   DateTime?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  service   Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@map("pricing")
+}
+
+// Бронирования
+model Booking {
+  id          String   @id @default(cuid())
+
+  // Информация о туристе
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Информация о туре
+  tourId      String
+  tour        Tour     @relation(fields: [tourId], references: [id], onDelete: Cascade)
+
+  // Детали бронирования
+  bookingDate DateTime
+  participants Int
+  totalPrice  Float    // Используем Float вместо Decimal для SQLite
+  currency    String   @default("RUB")
+
+  // Статус
+  status      String   @default("PENDING")
+
+  // Контактная информация
+  contactName  String
+  contactPhone String
+  contactEmail String
+
+  // Специальные требования
+  specialRequests String?
+
+  // Платежная информация
+  paymentId   String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("bookings")
+}
+
+// Отзывы
+model Review {
+  id      String   @id @default(cuid())
+  userId  String
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tourId  String
+  tour    Tour     @relation(fields: [tourId], references: [id], onDelete: Cascade)
+
+  // Рейтинг и отзыв
+  rating  Int      // 1-5 звезд
+  title   String?
+  comment String?
+
+  // Медиа (заменили массив на JSON строку для SQLite)
+  photos  String?  // JSON строка с массивом URL
+
+  // Статус
+  isVerified Boolean @default(false)
+  isVisible  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, tourId])
+  @@map("reviews")
+}
+
+// Фото
+model Photo {
+  id            String   @id @default(cuid())
+  url           String
+  alt           String?
+  filename      String
+
+  // Связи
+  tourId        String?
+  tour          Tour?    @relation(fields: [tourId], references: [id], onDelete: Cascade)
+
+  destinationId String?
+  destination   Destination? @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+
+  // Характеристики фото
+  isPrimary     Boolean  @default(false)
+  sortOrder     Int      @default(0)
+
+  // Метаданные
+  width         Int?
+  height        Int?
+  fileSize      Int?
+
+  createdAt     DateTime @default(now())
+
+  @@map("photos")
+}
